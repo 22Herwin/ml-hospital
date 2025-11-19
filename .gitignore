@@ -1,0 +1,52 @@
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.pickle
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Streamlit cache
+.streamlit/
+
+# VSCode settings
+.vscode/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+
+# Models (optional—if you want them NOT tracked)
+models/*.pkl
+
+# Datasets (optional—avoid uploading big data)
+data/*.csv
+data/*.xlsx
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS junk
+*.DS_Store
+
+# Supabase credentials
+supabase_client.py
+supabase_schema.sql
+
+# Playwright test outputs (if any)
+test-results/
+playwright-report/
+
+# Build folders
+build/
+dist/
+
+# Node folders (only if you have js frontend)
+node_modules/
