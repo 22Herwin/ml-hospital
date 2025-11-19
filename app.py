@@ -390,73 +390,27 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
 
             # Get confidence with fallback
             prob = None
-            try:
-                if hasattr(models['inpatient'], 'predict_proba'):
-                    proba = models['inpatient'].predict_proba(features)
-                    if proba.shape[1] >= 2:
-                        prob = float(proba[0, 1]) * 100
-                    else:
-                        prob = float(proba[0, 0]) * 100
-            except:
-                pass
+            # Compute inpatient-class probability robustly
+            prob = get_inpatient_probability(models['inpatient'], features)
 
             col1, col2 = st.columns(2)
             
             # Only recommend inpatient if confidence > 75% for high severity
             if pred_in == 1 and (prob is None or prob >= 75) and patient['severity_score'] >= 5:
-                with col1:
+                 with col1:
                     st.success(f"**HOSPITALIZATION RECOMMENDED** (Confidence: {prob:.1f}%)" if prob is not None else 
                                "**HOSPITALIZATION RECOMMENDED** (Confidence: N/A)")
                 
-                # Show ward and stay prediction
-                if models['ward'] is not None and models['stay'] is not None:
-                    try:
-                        # try predict ward; if missing columns (diagnosis_code) retry with augmented features
-                        try:
-                            ward_pred = models['ward'].predict(features)[0]
-                        except Exception as werr:
-                            if 'diagnosis_code' in str(werr):
-                                features_with_diag = features.copy()
-                                diag_code = st.session_state.current_patient.get('diagnosis_code', 'D06')
-                                features_with_diag['diagnosis_code'] = diag_code
-                                ward_pred = models['ward'].predict(features_with_diag)[0]
-                            else:
-                                raise
 
-                        ward = str(ward_pred[0]) if isinstance(ward_pred, np.ndarray) else str(ward_pred)
+# ...existing code...
 
-                        # try predict stay_days; same retry-on-missing-column logic
-                        try:
-                            stay_pred = models['stay'].predict(features)[0]
-                        except Exception as serr:
-                            if 'diagnosis_code' in str(serr):
-                                features_with_diag = features.copy()
-                                features_with_diag['diagnosis_code'] = st.session_state.current_patient.get('diagnosis_code', 'D06')
-                                stay_pred = models['stay'].predict(features_with_diag)[0]
-                            else:
-                                raise
-
-                        stay_days = max(1, int(round(stay_pred)))
-
-                        ward_details = {
-                            'General': 'Standard ward for stable patients',
-                            'ICU': 'Intensive care for critical cases',
-                            'Isolation': 'Specialized infection control unit',
-                            'Cardiac': 'Heart condition monitoring unit'
-                        }
-                        
-                        with col2:
-                            st.warning(f"Recommended Ward: {ward}")
-                            st.info(f"Estimated Stay: {stay_days} days")
-                            st.caption(f"*{ward_details.get(ward, 'Specialized care unit')}*")
-                    except Exception as e:
-                        st.warning(f"Error predicting ward/stay: {str(e)}")
-                        st.info("Estimated Stay: 3 days (default)")
-                        st.warning("Recommended Ward: General (default)")
             else:
                 with col1:
-                    st.info(f"Outpatient Care Recommended (Confidence: {100-prob:.1f}%)" if prob is not None else 
-                           "Outpatient Care Recommended (Confidence: N/A)")
+                    if prob is not None:
+                        outpatient_conf = max(0.0, min(100.0, 100.0 - float(prob)))
+                        st.info(f"Outpatient Care Recommended (Confidence: {outpatient_conf:.1f}%)")
+                    else:
+                        st.info("Outpatient Care Recommended (Confidence: N/A)")
                 
                 # Show outpatient recommendation
                 with col2:
