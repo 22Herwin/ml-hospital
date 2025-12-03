@@ -29,6 +29,10 @@ models/*.pkl
 # Datasets (optional—avoid uploading big data)
 data/*.csv
 data/*.xlsx
+data/admission_log.csv
+data/medicine_stock.csv
+data/hospitals.csv
+data/chutes_raw_responses.log
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

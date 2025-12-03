@@ -961,5 +961,80 @@ with col3:
         st.info("Simulated +2 admissions per ward")
         safe_rerun()
 
+# Admission log loading function
+def load_admission_log() -> pd.DataFrame:
+    """Load admission log with error handling and auto-repair."""
+    try:
+        if os.path.exists(PATIENTS_LOG):
+            # Try to read with the correct column count
+            df = pd.read_csv(PATIENTS_LOG)
+            
+            # Check if header matches expected columns
+            expected_cols = ['patient_id', 'admit_time', 'hospital_id', 'hospital_name', 'ward_type', 
+                           'estimated_days', 'med_used', 'qty', 'diagnosis_code', 'diagnosis_name', 'severity_score']
+            
+            if len(df.columns) != len(expected_cols):
+                st.warning(f"Admission log header mismatch. Expected {len(expected_cols)} columns, got {len(df.columns)}. Rebuilding...")
+                os.remove(PATIENTS_LOG)
+                df = pd.DataFrame(columns=expected_cols)
+                df.to_csv(PATIENTS_LOG, index=False)
+                return df
+            
+            return df
+        else:
+            # Create fresh CSV with correct headers
+            expected_cols = ['patient_id', 'admit_time', 'hospital_id', 'hospital_name', 'ward_type', 
+                           'estimated_days', 'med_used', 'qty', 'diagnosis_code', 'diagnosis_name', 'severity_score']
+            df = pd.DataFrame(columns=expected_cols)
+            df.to_csv(PATIENTS_LOG, index=False)
+            return df
+    except Exception as e:
+        st.error(f"Error loading admission log: {e}. Attempting to rebuild...")
+        try:
+            os.remove(PATIENTS_LOG)
+            expected_cols = ['patient_id', 'admit_time', 'hospital_id', 'hospital_name', 'ward_type', 
+                           'estimated_days', 'med_used', 'qty', 'diagnosis_code', 'diagnosis_name', 'severity_score']
+            df = pd.DataFrame(columns=expected_cols)
+            df.to_csv(PATIENTS_LOG, index=False)
+            return df
+        except Exception as e2:
+            st.error(f"Failed to rebuild admission log: {e2}")
+            return pd.DataFrame()
+
+# <-- NEW: Enhanced Admission Log Display
+st.markdown("---")
+st.subheader("Admission Log")
+
+# Load and display admission log
+admission_log_df = load_admission_log()
+if admission_log_df.empty:
+    st.info("No admissions recorded yet.")
+else:
+    # Allow filtering by patient ID and hospital
+    with st.expander("Filter Options", expanded=False):
+        filter_pid = st.text_input("Filter by Patient ID")
+        filter_hospital = st.selectbox("Filter by Hospital", ["All"] + admission_log_df['hospital_name'].unique().tolist())
+        
+        # Apply filters
+        filtered_df = admission_log_df
+        if filter_pid:
+            filtered_df = filtered_df[filtered_df['patient_id'].str.contains(filter_pid, na=False)]
+        if filter_hospital != "All":
+            filtered_df = filtered_df[filtered_df['hospital_name'] == filter_hospital]
+        
+        st.write(f"Showing {len(filtered_df)} admission(s)")
+        st.dataframe(filtered_df, use_container_width=True)
+        
+        # Download button for filtered log
+        csv = filtered_df.to_csv(index=False)
+        st.download_button(
+            "Download Filtered Log (CSV)",
+            csv,
+            f"admission_log_filtered_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            "text/csv",
+            key="download_filtered_log"
+        )
+# <-- END NEW
+
 st.markdown("---")
 st.caption(f"AI Hospital Management System • Powered by {CHUTES_MODEL} • ICD-10 Validated • © 2025")
