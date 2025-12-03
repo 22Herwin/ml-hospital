@@ -846,7 +846,7 @@ st.subheader("Recent Admissions")
 if os.path.exists(PATIENTS_LOG):
     try:
         log_df = pd.read_csv(PATIENTS_LOG)
-        st.dataframe(log_df.tail(5))
+        st.dataframe(log_df.tail(5), width='stretch')
     except Exception as e:
         st.error(f"Error loading admission log: {str(e)}")
 else:
@@ -1038,7 +1038,7 @@ st.markdown("---")
 st.subheader("Hospital Bed Management")
 
 hospitals_df = load_hospitals()
-st.dataframe(hospitals_df, use_container_width=True)
+st.dataframe(hospitals_df, width='stretch')
 
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -1122,7 +1122,7 @@ else:
             filtered_df = filtered_df[filtered_df['hospital_name'] == filter_hospital]
         
         st.write(f"Showing {len(filtered_df)} admission(s)")
-        st.dataframe(filtered_df, use_container_width=True)
+        st.dataframe(filtered_df, width='stretch')
         
         # Download button for filtered log
         csv = filtered_df.to_csv(index=False)
