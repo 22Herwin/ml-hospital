@@ -721,14 +721,14 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                 stock_df.loc[stock_df['medicine_name'] == selected_med, 'stock'] -= qty
                 save_stock(stock_df)
 
-                st.success(f"Patient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
+                st.success(f"atient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
+                st.info(f"Admission logged | Medicine assigned: {selected_med} x{qty}")
                 
                 # Check capacity AFTER admission and warn if critically low
                 has_capacity, capacity_msg = check_ward_capacity_and_alert(requested_ward, hospitals_df)
                 if occupancy_pct >= 85:
                     st.warning(f"POST-ADMISSION ALERT: {capacity_msg}")
                 
-                st.balloons()
                 st.session_state.last_admission_id = patient['pid']
                 st.session_state.admission_complete = True
                 time.sleep(2)
