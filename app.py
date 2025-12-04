@@ -82,20 +82,25 @@ def load_stock():
         if os.path.exists(STOCK_CSV):
             df = pd.read_csv(STOCK_CSV)
             df['stock'] = pd.to_numeric(df['stock'], errors='coerce').fillna(0).astype(int)
-            return df
-        else:
-            # Create comprehensive medicine stock
-            common_meds = [
-                'Amoxicillin 500mg', 'Azithromycin 250mg', 'Paracetamol 500mg',
-                'Aspirin 100mg', 'Clopidogrel 75mg', 'Atorvastatin 20mg',
-                'Meropenem 1g IV', 'Vancomycin 1g IV', 'IV Fluids',
-                'Ceftriaxone 1g IV', 'Oxygen therapy', 'Mannitol IV',
-                'Amlodipine 5mg', 'Lisinopril 10mg', 'Metformin 500mg',
-                'Omeprazole 20mg', 'Ibuprofen 400mg', 'Chlorpheniramine 4mg'
-            ]
-            df = pd.DataFrame({'medicine_name': common_meds, 'stock': [25]*len(common_meds)})
-            df.to_csv(STOCK_CSV, index=False)
-            return df
+            # Only return if non-empty
+            if not df.empty:
+                return df
+        
+        # Always create default stock if missing or empty
+        common_meds = [
+            'Amoxicillin 500mg', 'Azithromycin 250mg', 'Paracetamol 500mg',
+            'Aspirin 100mg', 'Clopidogrel 75mg', 'Atorvastatin 20mg',
+            'Meropenem 1g IV', 'Vancomycin 1g IV', 'IV Fluids',
+            'Ceftriaxone 1g IV', 'Oxygen therapy', 'Mannitol IV',
+            'Amlodipine 5mg', 'Lisinopril 10mg', 'Metformin 500mg',
+            'Omeprazole 20mg', 'Ibuprofen 400mg', 'Chlorpheniramine 4mg'
+        ]
+        df = pd.DataFrame({'medicine_name': common_meds, 'stock': [50]*len(common_meds)})  # Increased stock to 50
+        os.makedirs(DATA_DIR, exist_ok=True)
+        df.to_csv(STOCK_CSV, index=False)
+        st.info("✅ Medicine stock initialized with default inventory")
+        return df
+        
     except Exception as e:
         st.error(f"Error loading stock: {str(e)}")
         return pd.DataFrame(columns=['medicine_name', 'stock'])
@@ -641,105 +646,131 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
             with col2:
                 st.info(f"**Occupancy:** {int((available_hospital['occupied_beds'] / available_hospital['total_beds']) * 100)}%")
 
-            # Filter available medicines
+            # Filter available medicines - IMPROVED
             available_meds = stock_df[
-                stock_df['medicine_name'].apply(lambda x: any(med in x for med in recommended_meds)) &
+                stock_df['medicine_name'].apply(lambda x: any(med.lower() in x.lower() for med in recommended_meds)) &
                 (stock_df['stock'] > 0)
             ]
 
             if available_meds.empty:
-                st.warning("No recommended medicines in stock. Please replenish inventory.")
-            else:
-                col1, col2 = st.columns(2)
-                with col1:
-                    selected_med = st.selectbox(
-                        'Select Medication to Assign',
-                        available_meds['medicine_name'].tolist(),
-                        help="Choose from available in-stock medications"
-                    )
+                # If no exact match, show all available meds
+                st.warning("Exact recommended medicines not in stock. Showing all available medicines:")
+                available_meds = stock_df[stock_df['stock'] > 0]
+                
+                if available_meds.empty:
+                    st.error("No medicines in stock. Please replenish inventory first.")
+                    st.stop()
 
-                with col2:
-                    current_stock = available_meds[available_meds['medicine_name'] == selected_med]['stock'].values[0]
-                    qty = st.number_input(
-                        'Quantity to Assign',
-                        min_value=1,
-                        max_value=int(current_stock),
-                        value=1,
-                        help=f"Available stock: {current_stock}"
-                    )
+            col1, col2 = st.columns(2)
+            with col1:
+                selected_med = st.selectbox(
+                    'Select Medication to Assign',
+                    available_meds['medicine_name'].tolist(),
+                    help="Choose from available in-stock medications"
+                )
 
-                if st.button('CONFIRM ADMISSION', type='primary', width='stretch'):
-                    # Check current capacity before admission
-                    has_capacity, capacity_msg = check_ward_capacity_and_alert(requested_ward, hospitals_df)
-                    
-                    st.info(capacity_msg)
-                    
-                    if not has_capacity:
-                        st.error(f"Cannot admit: {capacity_msg}")
-                        st.stop()
-                    
-                    # Create admission record with hospital info
-                    admission_data = {
-                        'patient_id': patient['pid'],
-                        'admit_time': patient['timestamp'].isoformat(),
-                        'hospital_id': available_hospital['hospital_id'],
-                        'hospital_name': available_hospital['hospital_name'],
-                        'ward_type': available_hospital['ward_type'],
-                        'estimated_days': ai_result.get('estimated_stay_days', 3),
-                        'med_used': selected_med,
-                        'qty': int(qty),
-                        'diagnosis_code': ai_result.get('icd10_code', 'Unknown'),
-                        'diagnosis_name': ai_result.get('diagnosis_name', 'Unknown'),
-                        'severity_score': patient['severity_score']
-                    }
+            with col2:
+                current_stock = available_meds[available_meds['medicine_name'] == selected_med]['stock'].values[0]
+                qty = st.number_input(
+                    'Quantity to Assign',
+                    min_value=1,
+                    max_value=int(current_stock),
+                    value=1,
+                    help=f"Available stock: {current_stock}"
+                )
 
-                    # Update hospital occupancy
-                    hospitals_df.loc[hospitals_df['hospital_id'] == available_hospital['hospital_id'], 'occupied_beds'] = \
-                        int(available_hospital['occupied_beds']) + 1
-                    save_hospitals(hospitals_df)
+            if st.button('CONFIRM ADMISSION', type='primary', width='stretch'):
+                # Check current capacity before admission
+                has_capacity, capacity_msg = check_ward_capacity_and_alert(requested_ward, hospitals_df)
+                
+                st.info(capacity_msg)
+                
+                if not has_capacity:
+                    st.error(f"Cannot admit: {capacity_msg}")
+                    st.stop()
+                
+                # Create admission record with hospital info
+                admission_data = {
+                    'patient_id': patient['pid'],
+                    'admit_time': patient['timestamp'].isoformat(),
+                    'hospital_id': available_hospital['hospital_id'],
+                    'hospital_name': available_hospital['hospital_name'],
+                    'ward_type': available_hospital['ward_type'],
+                    'estimated_days': ai_result.get('estimated_stay_days', 3),
+                    'med_used': selected_med,
+                    'qty': int(qty),
+                    'diagnosis_code': ai_result.get('icd10_code', 'Unknown'),
+                    'diagnosis_name': ai_result.get('diagnosis_name', 'Unknown'),
+                    'severity_score': patient['severity_score']
+                }
 
-                    # Save admission to log
-                    os.makedirs(DATA_DIR, exist_ok=True)
-                    admission_df = pd.DataFrame([admission_data])
-                    if os.path.exists(PATIENTS_LOG):
-                        admission_df.to_csv(PATIENTS_LOG, mode='a', header=False, index=False)
-                    else:
-                        admission_df.to_csv(PATIENTS_LOG, index=False)
+                # Update hospital occupancy
+                hospitals_df.loc[hospitals_df['hospital_id'] == available_hospital['hospital_id'], 'occupied_beds'] = \
+                    int(available_hospital['occupied_beds']) + 1
+                save_hospitals(hospitals_df)
 
-                    # Update stock
-                    stock_df.loc[stock_df['medicine_name'] == selected_med, 'stock'] -= qty
-                    save_stock(stock_df)
+                # Save admission to log
+                os.makedirs(DATA_DIR, exist_ok=True)
+                admission_df = pd.DataFrame([admission_data])
+                if os.path.exists(PATIENTS_LOG):
+                    admission_df.to_csv(PATIENTS_LOG, mode='a', header=False, index=False)
+                else:
+                    admission_df.to_csv(PATIENTS_LOG, index=False)
 
-                    st.success(f"Patient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
-                    
-                    # Check capacity AFTER admission and warn if critically low
-                    has_capacity, capacity_msg = check_ward_capacity_and_alert(requested_ward, hospitals_df)
-                    if occupancy_pct >= 85:
-                        st.warning(f"POST-ADMISSION ALERT: {capacity_msg}")
-                    
-                    st.balloons()
-                    st.session_state.last_admission_id = patient['pid']
-                    st.session_state.admission_complete = True
-                    time.sleep(2)
-                    safe_rerun()
+                # Update stock
+                stock_df.loc[stock_df['medicine_name'] == selected_med, 'stock'] -= qty
+                save_stock(stock_df)
+
+                st.success(f"Patient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
+                
+                # Check capacity AFTER admission and warn if critically low
+                has_capacity, capacity_msg = check_ward_capacity_and_alert(requested_ward, hospitals_df)
+                if occupancy_pct >= 85:
+                    st.warning(f"POST-ADMISSION ALERT: {capacity_msg}")
+                
+                st.balloons()
+                st.session_state.last_admission_id = patient['pid']
+                st.session_state.admission_complete = True
+                time.sleep(2)
+                safe_rerun()
 
 # Inventory management
 st.markdown("---")
 st.subheader("Medicine Inventory Management")
 
 stock_df = load_stock()
-st.dataframe(stock_df)
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     if st.button('Refresh Inventory'):
         load_stock.clear()
         safe_rerun()
+
 with col2:
-    if st.button('Replenish All Stock (+20 units)'):
-        stock_df['stock'] = stock_df['stock'] + 20
+    if st.button('Replenish All Stock (+50 units)'):
+        stock_df['stock'] = stock_df['stock'] + 50
         save_stock(stock_df)
-        st.success("All stock replenished by 20 units")
+        st.success("All stock replenished by 50 units")
+        load_stock.clear()
+        safe_rerun()
+
+with col3:
+    if st.button('Reset to Default (50 units each)'):
+        common_meds = [
+            'Amoxicillin 500mg', 'Azithromycin 250mg', 'Paracetamol 500mg',
+            'Aspirin 100mg', 'Clopidogrel 75mg', 'Atorvastatin 20mg',
+            'Meropenem 1g IV', 'Vancomycin 1g IV', 'IV Fluids',
+            'Ceftriaxone 1g IV', 'Oxygen therapy', 'Mannitol IV',
+            'Amlodipine 5mg', 'Lisinopril 10mg', 'Metformin 500mg',
+            'Omeprazole 20mg', 'Ibuprofen 400mg', 'Chlorpheniramine 4mg'
+        ]
+        stock_df = pd.DataFrame({'medicine_name': common_meds, 'stock': [50]*len(common_meds)})
+        save_stock(stock_df)
+        st.success("Stock reset to defaults")
+        load_stock.clear()
+        safe_rerun()
+
+st.dataframe(stock_df, width='stretch')
 
 # Admission history
 st.markdown("---")
