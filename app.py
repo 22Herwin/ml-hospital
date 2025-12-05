@@ -780,22 +780,22 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                     int(available_hospital['occupied_beds']) + 1
                 save_hospitals(hospitals_df)
 
-                # SKIP LOCAL CSV - SAVE DIRECTLY TO SUPABASE ONLY
-                supabase_success = False
+                # SKIP LOCAL CSV - SAVE DIRECTLY TO Sqlite ONLY
+                sqlite_success = False
                 try:
-                    from supabase_client import insert_admission
+                    from sqlite_client import insert_admission
                     result = insert_admission(admission_data)
                     if result:
-                        supabase_success = True
-                        st.success(f"✅ Patient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
+                        sqlite_success = True
+                        st.success(f"Patient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
                     else:
-                        st.error("Failed to save to Supabase")
+                        st.error("Failed to save to SQLite")
                         st.stop()
                 except ImportError:
-                    st.error("Supabase client not available. Install: pip install supabase")
+                    st.error("SQLite client not available. Install: pip install sqlite3")
                     st.stop()
                 except Exception as e:
-                    st.error(f"Supabase error: {type(e).__name__}: {str(e)}")
+                    st.error(f"SQLite error: {type(e).__name__}: {str(e)}")
                     st.stop()
 
                 # Update stock
@@ -806,7 +806,7 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                 st.success(f"Patient {patient['pid']} admitted")
                 st.info(f"Medicine assigned: {selected_med} x{qty}")
                 st.info(f"Admission: {admission_date.strftime('%Y-%m-%d')} → Discharge: {estimated_discharge.strftime('%Y-%m-%d')} ({int(discharge_days)} days)")
-                st.info(f"Data stored in Supabase")
+                st.info(f"Data stored in Sqlite")
                 
                 # Calculate occupancy_pct AFTER updating hospitals
                 updated_hospitals_df = load_hospitals()
@@ -1075,25 +1075,25 @@ with col3:
         st.info("Simulated +2 admissions per ward")
         safe_rerun()
 
-# View Supabase admissions
+# View Sqlite admissions
 st.markdown("---")
-st.subheader("Supabase Admissions Sync")
+st.subheader("Sqlite Admissions Sync")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button('Fetch from Supabase'):
+    if st.button('Fetch from Sqlite'):
         try:
-            from supabase_client import get_all_admissions
+            from sqlite_client import get_all_admissions
             admissions = get_all_admissions()
             if admissions:
                 admissions_df = pd.DataFrame(admissions)
                 st.dataframe(admissions_df, width='stretch')
-                st.success(f"Synced {len(admissions)} admissions found in Supabase")
+                st.success(f"Synced {len(admissions)} admissions found in Sqlite")
             else:
-                st.info("No admissions in Supabase yet")
+                st.info("No admissions in Sqlite yet")
         except Exception as e:
-            st.error(f"Error fetching from Supabase: {str(e)}")
+            st.error(f"Error fetching from Sqlite: {str(e)}")
 
 
 # View admission timeline
@@ -1101,7 +1101,7 @@ st.markdown("---")
 st.subheader("Patient Admission Timeline")
 
 try:
-    from supabase_client import get_all_admissions
+    from sqlite_client import get_all_admissions
     import pandas as pd
     
     admissions = get_all_admissions()
@@ -1114,7 +1114,7 @@ try:
         admissions_df = admissions_df.sort_values('admit_time', ascending=False)  # Most recent first
         
         # Extract date components for filtering
-        admissions_df['date'] = admissions_df['admit_time'].dt.date
+        admissions_df['date'] = admissions_df['admit_time'].dt.normalize().dt.date
         admissions_df['month'] = admissions_df['admit_time'].dt.to_period('M')
         admissions_df['year'] = admissions_df['admit_time'].dt.year
         
@@ -1402,9 +1402,9 @@ try:
                 st.dataframe(hospital_ward, width='stretch')
     
     else:
-        st.info("📭 No admission data yet. Admissions will appear here as patients are admitted.")
+        st.info("No admission data yet. Admissions will appear here as patients are admitted.")
 
 except ImportError:
-    st.warning("Supabase client not configured. Timeline feature unavailable.")
+    st.warning("Sqlite client not configured. Timeline feature unavailable.")
 except Exception as e:
     st.error(f"Error loading timeline: {str(e)}")
