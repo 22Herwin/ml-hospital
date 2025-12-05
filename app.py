@@ -706,6 +706,45 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                     value=1,
                     help=f"Available stock: {current_stock}"
                 )
+            
+            # NEW: Admission Date Planning
+            st.write("**Planned Admission Schedule**")
+            col_date1, col_date2, col_date3 = st.columns(3)
+            
+            with col_date1:
+                admission_date = st.date_input(
+                    "Admission Date",
+                    value=datetime.date.today(),
+                    min_value=datetime.date.today(),
+                    help="Date when patient will be admitted"
+                )
+            
+            with col_date2:
+                admission_time = st.time_input(
+                    "Admission Time",
+                    value=datetime.time(hour=9, minute=0),
+                    help="Time of admission"
+                )
+            
+            with col_date3:
+                discharge_days = st.number_input(
+                    "Estimated Length of Stay (days)",
+                    min_value=1,
+                    max_value=90,
+                    value=ai_result.get('estimated_stay_days', 3),
+                    help="How many days will patient be admitted?"
+                )
+            
+            # Calculate estimated discharge date
+            admission_datetime = datetime.datetime.combine(admission_date, admission_time)
+            estimated_discharge = admission_date + datetime.timedelta(days=int(discharge_days))
+            
+            col_summary1, col_summary2 = st.columns(2)
+            with col_summary1:
+                st.info(f"📅 **Admission:** {admission_date.strftime('%Y-%m-%d (%A)')} at {admission_time.strftime('%H:%M')}")
+            
+            with col_summary2:
+                st.info(f"📅 **Est. Discharge:** {estimated_discharge.strftime('%Y-%m-%d (%A)')} ({int(discharge_days)} days)")
 
             if st.button('CONFIRM ADMISSION', type='primary', width='stretch'):
                 # Check current capacity before admission
@@ -717,10 +756,14 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                     st.error(f"Cannot admit: {capacity_msg}")
                     st.stop()
                 
-                # Create admission record with hospital info
+                # Create admission record with hospital info AND DATE PLANNING
                 admission_data = {
                     'patient_id': patient['pid'],
-                    'admit_time': patient['timestamp'].isoformat(),
+                    'admit_time': admission_datetime.isoformat(),  # Use planned admission time
+                    'planned_admission_date': admission_date.isoformat(),
+                    'planned_admission_time': admission_time.isoformat(),
+                    'estimated_discharge_date': estimated_discharge.isoformat(),
+                    'length_of_stay_days': int(discharge_days),
                     'hospital_id': available_hospital['hospital_id'],
                     'hospital_name': available_hospital['hospital_name'],
                     'ward_type': available_hospital['ward_type'],
@@ -760,9 +803,10 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                 save_stock(stock_df)
 
                 # Show success messages
-                st.success(f"✅ Patient {patient['pid']} admitted")
-                st.info(f"📋 Medicine assigned: {selected_med} x{qty}")
-                st.info(f"🗄️ Data stored in Supabase")
+                st.success(f"Patient {patient['pid']} admitted")
+                st.info(f"Medicine assigned: {selected_med} x{qty}")
+                st.info(f"Admission: {admission_date.strftime('%Y-%m-%d')} → Discharge: {estimated_discharge.strftime('%Y-%m-%d')} ({int(discharge_days)} days)")
+                st.info(f"Data stored in Supabase")
                 
                 # Calculate occupancy_pct AFTER updating hospitals
                 updated_hospitals_df = load_hospitals()
@@ -773,7 +817,7 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                     occupancy_pct = int((updated_occupied / updated_total) * 100) if updated_total > 0 else 0
                     
                     if occupancy_pct >= 85:
-                        st.warning(f"⚠️ Ward now at {occupancy_pct}% capacity")
+                        st.warning(f"Ward now at {occupancy_pct}% capacity")
                 
                 st.session_state.last_admission_id = patient['pid']
                 st.session_state.admission_complete = True
@@ -1066,7 +1110,7 @@ try:
         admissions_df = pd.DataFrame(admissions)
         
         # Convert admit_time to datetime
-        admissions_df['admit_time'] = pd.to_datetime(admissions_df['admit_time'])
+        admissions_df['admit_time'] = pd.to_datetime(admissions_df['admit_time'], format='ISO8601', utc=True)
         admissions_df = admissions_df.sort_values('admit_time', ascending=False)  # Most recent first
         
         # Extract date components for filtering
@@ -1151,11 +1195,11 @@ try:
                 
                 # Create display dataframe - FIXED: Use [] not {}
                 display_df = recent_admissions[[
-                    'patient_id', 'admit_time', 'hospital_name', 'ward_type', 
+                    'patient_id', 'admit_time', 'ward_type', 
                     'diagnosis_code', 'med_used', 'severity_score'
                 ]].copy()
                 
-                display_df.columns = ['Patient ID', 'Admit Time', 'Hospital', 'Ward', 'Diagnosis', 'Medication', 'Severity']
+                display_df.columns = ['Patient ID', 'Admit Time', 'Ward', 'Diagnosis', 'Medication', 'Severity']
                 
                 st.dataframe(display_df, width='stretch', hide_index=True)
                 
@@ -1171,7 +1215,6 @@ try:
                             st.write(f"**Admission Time:**\n{row['admit_time'].strftime('%Y-%m-%d %H:%M:%S')}")
                         
                         with col2:
-                            st.write(f"**Hospital:**\n{row['hospital_name']}")
                             st.write(f"**Ward Type:**\n{row['ward_type']}")
                         
                         with col3:
@@ -1362,6 +1405,6 @@ try:
         st.info("📭 No admission data yet. Admissions will appear here as patients are admitted.")
 
 except ImportError:
-    st.warning("⚠️ Supabase client not configured. Timeline feature unavailable.")
+    st.warning("Supabase client not configured. Timeline feature unavailable.")
 except Exception as e:
-    st.error(f"❌ Error loading timeline: {str(e)}")
+    st.error(f"Error loading timeline: {str(e)}")
