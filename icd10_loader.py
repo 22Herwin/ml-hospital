@@ -28,7 +28,7 @@ def _find_in_secrets(key: str) -> Optional[str]:
         if not sec:
             return None
         # flat
-        if key in sec:
+        if key in sec and isinstance(sec[key], str):
             return sec[key]
         # common sections
         for section in ("who", "who_icd", "icd", "chutes"):

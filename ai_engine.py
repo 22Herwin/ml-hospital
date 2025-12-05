@@ -36,7 +36,13 @@ def _find_in_secrets(key: str) -> Optional[str]:
         # common nested sections
         for section in ("chutes", "deepseek", "ollama", "supabase"):
             if section in sec and isinstance(sec[section], collections.abc.Mapping) and key in sec[section]:
-                return sec[section][key]
+                val = sec[section][key]
+                if isinstance(val, str):
+                    return val
+                try:
+                    return json.dumps(val)
+                except Exception:
+                    return str(val)
         # deep search
         def dfs(d):
             for _, v in d.items():
@@ -61,7 +67,7 @@ def get_config(name: str, default: Optional[str] = None) -> Optional[str]:
 # ---- Chutes AI configuration (secrets + env) ----
 CHUTES_API_URL = get_config("CHUTES_API_URL", "https://llm.chutes.ai/v1/chat/completions")
 CHUTES_API_TOKEN = get_config("CHUTES_API_TOKEN", None)
-CHUTES_MODEL = get_config("CHUTES_MODEL", "deepseek-ai/DeepSeek-R1")
+CHUTES_MODEL = get_config("CHUTES_MODEL", "unsloth/gemma-3-12b-it")
 
 # Export to env for downstream libs (don’t override if already set)
 if CHUTES_API_URL and not os.getenv("CHUTES_API_URL"):
