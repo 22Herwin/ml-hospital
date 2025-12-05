@@ -63,6 +63,7 @@ project/
 ├── app.py                 # Streamlit app (UI, workflows, charts)
 ├── ai_engine.py           # LLM calls (Chutes + Ollama fallback)
 ├── icd10_loader.py        # WHO + ICD10API ICD-10 validation
+├── sqlite_client.py        # Locally save the patients admission
 ├── data/
 │   ├── hospitals.csv
 │   ├── medicine_stock.csv
@@ -101,6 +102,9 @@ WHO_CLIENT_SECRET=your_who_secret
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=mistral
 OLLAMA_TIMEOUT=30
+
+# Sqlite
+SQLITE_DB=<C:/your locally saved db>
 ```
 
 If `CHUTES_API_TOKEN` is missing or returns 402 → app auto-falls back to local Ollama (if running).
