@@ -7,6 +7,7 @@ A fully interactive **clinical decision support system** using:
 - **ICD-10 validation** via WHO + ICD10API
 - **Hospital bed management** with auto-routing
 - **Medicine stock system**
+- **SQLite local database** for admission logging
 - **Admission workflow & logging**
 - **Plotly dashboards** for occupancy analysis
 
@@ -43,9 +44,18 @@ A fully interactive **clinical decision support system** using:
 
 ---
 
+### **SQLite Local Database**
+
+- Locally persists all admission records in SQLite
+- Real-time sync with **JetBrains DataGrip** for visual inspection
+- All admission data stored with patient, diagnosis, ward, hospital, meds, severity, and timestamps
+
+---
+
 ### **Admission Logging**
 
-- CSV: `data/admission_log.csv` with 11 columns
+- SQLite: `admissions.db` with structured admission records
+- CSV: `data/admission_log.csv` with 11 columns (optional backup)
 - Includes patient, diagnosis, ward/hospital, meds, severity, timestamp
 
 ---
@@ -53,6 +63,7 @@ A fully interactive **clinical decision support system** using:
 ### **Visual Dashboards**
 
 - Plotly bar/stacked bar/heatmap/gauges for ward/hospital occupancy
+- Timeline view of all admissions with filtering by date, ward type, hospital
 
 ---
 
@@ -63,7 +74,9 @@ project/
 ├── app.py                 # Streamlit app (UI, workflows, charts)
 ├── ai_engine.py           # LLM calls (Chutes + Ollama fallback)
 ├── icd10_loader.py        # WHO + ICD10API ICD-10 validation
-├── sqlite_client.py        # Locally save the patients admission
+├── sqlite_client.py       # SQLite database operations (CRUD)
+├── supabase_client.py     # Optional Supabase backup sync
+├── admissions.db          # SQLite local database (auto-created)
 ├── data/
 │   ├── hospitals.csv
 │   ├── medicine_stock.csv
@@ -77,47 +90,114 @@ project/
 
 ## Requirements
 
-- Python 3.10–3.12
+- Python 3.8–3.11
 - Install dependencies:
 
-```
+```bash
 pip install -r requirements.txt
+```
+
+---
+
+## Installation
+
+### 1. Clone the Repository
+
+**HTTPS:**
+
+```bash
+git clone https://github.com/22Herwin/ai-hospital.git
+cd ai-hospital
+```
+
+**SSH:**
+
+```bash
+git clone git@github.com:22Herwin/ai-hospital.git
+cd ai-hospital
+```
+
+### 2. Create Virtual Environment (Optional but Recommended)
+
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Or manually install:
+
+```bash
+pip install streamlit>=1.20.0 python-dotenv>=0.21.0 pandas>=1.5.0 numpy>=1.23.0 scikit-learn>=1.2.0 joblib>=1.2.0 plotly>=5.13.0 requests>=2.28.0 python-dateutil>=2.8.2 supabase>=2.0.0 postgrest-py>=0.13.0
 ```
 
 ---
 
 ## Environment Variables (`.env`)
 
-```
-# Chutes (cloud)
+Create a `.env` file in the project root:
+
+```bash
+# Chutes AI (cloud LLM)
 CHUTES_API_TOKEN=your_chutes_api_key
 CHUTES_MODEL=unsloth/gemma-3-12b-it
 CHUTES_API_URL=https://llm.chutes.ai/v1/chat/completions
 
-# WHO ICD (optional)
+# WHO ICD-10 Validation (optional)
 WHO_CLIENT_ID=your_who_key
 WHO_CLIENT_SECRET=your_who_secret
 
-# Ollama (local fallback)
+# Ollama (local fallback LLM)
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=mistral
 OLLAMA_TIMEOUT=30
 
-# Sqlite
-SQLITE_DB=<C:/your locally saved db>
+# SQLite Local Database
+SQLITE_DB=admissions.db # Your local saved DB
 ```
 
-If `CHUTES_API_TOKEN` is missing or returns 402 → app auto-falls back to local Ollama (if running).
+If `CHUTES_API_TOKEN` is missing → app auto-falls back to local Ollama (if running).
 
 ---
 
 ## Running the Application
 
-```
+### Start Streamlit
+
+```bash
 streamlit run app.py
 ```
 
-Open: http://localhost:8501
+Open your browser: **http://localhost:8501**
+
+---
+
+## SQLite Database Setup
+
+### Using JetBrains DataGrip (Recommended)
+
+1. **Open DataGrip**
+2. **File → New → Data Source → SQLite**
+3. **File path:** `c:\Users\roy bagus k\Documents\rawat_inap_project\admissions.db`
+4. **Test Connection** → Click **OK**
+5. Right-click database → **Open SQL** to query admissions
+
+### Direct SQLite Query
+
+```bash
+sqlite3 admissions.db
+sqlite> SELECT * FROM admissions;
+```
 
 ---
 
@@ -125,6 +205,7 @@ Open: http://localhost:8501
 
 If missing, the app will create:
 
+- `admissions.db` (SQLite database with admissions table)
 - `data/medicine_stock.csv`
 - `data/hospitals.csv`
 - `data/admission_log.csv`
@@ -133,19 +214,12 @@ If missing, the app will create:
 
 ## Usage Notes
 
-- Confirm Admission updates hospital occupancy and logs to CSV.
-- Auto-routing chooses the next hospital with available beds in the same ward type.
-- Bed occupancy editor lets you simulate capacity scenarios.
-- Plotly charts visualize ward/hospital capacity (bar/stacked/heatmap/gauges).
-
----
-
-## Screenshots
-
-- Clinical Analysis Results
-- Ward Capacity Monitor (Plotly)
-- Recent Admissions
-- Bed Occupancy Editor
+- **Confirm Admission** updates hospital occupancy, saves to SQLite, and logs to CSV
+- **Auto-routing** chooses the next hospital with available beds in the same ward type
+- **Bed Occupancy Editor** lets you simulate capacity scenarios
+- **Plotly Charts** visualize ward/hospital capacity (bar/stacked/heatmap/gauges)
+- **Timeline View** shows all admissions with filtering by date, ward, and hospital
+- **Real-time Sync** — Refresh DataGrip to see new admissions instantly
 
 ---
 
@@ -153,8 +227,38 @@ If missing, the app will create:
 
 Demo prototype. For production add:
 
-- Auth & RBAC, database, rate limiting, audit logs, encryption
-- Medical expert validation, bias and safety reviews
+- Authentication & Role-Based Access Control (RBAC)
+- Database encryption & audit logs
+- Medical expert validation & bias reviews
+- Rate limiting & API security
+- Backup & disaster recovery
+
+---
+
+## Troubleshooting
+
+### SQLite Not Showing Data
+
+1. **Check `.env` file** has `SQLITE_DB=admissions.db`
+2. **Ensure file path matches** between DataGrip and `.env`
+3. **Restart Streamlit** after updating `.env`
+4. **Verify database location:** Should be in project root folder
+
+```bash
+ls admissions.db  # macOS/Linux
+dir admissions.db # Windows
+```
+
+### AI Engine Not Working
+
+1. **Check Chutes API Token** in `.env`
+2. **App falls back to rule engine** if token missing
+3. **Optional:** Run Ollama locally as backup
+
+```bash
+ollama pull mistral
+ollama serve
+```
 
 ---
 
@@ -163,6 +267,8 @@ Demo prototype. For production add:
 - Herwin Dermawan
 - M. Dimas Fajar R.
 - Chriscinntya Seva Garcia
+
+---
 
 ## License
 
