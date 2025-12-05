@@ -487,7 +487,36 @@ with st.form('patient_form'):
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        pid = st.text_input('Patient ID', value=f"P{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+        def generate_sequential_patient_id():
+            """Generate sequential patient ID from log file"""
+            import os
+            counter_file = os.path.join(DATA_DIR, '.patient_counter')
+            
+            try:
+                if os.path.exists(counter_file):
+                    with open(counter_file, 'r') as f:
+                        count = int(f.read().strip())
+                else:
+                    count = 0
+                
+                count += 1
+                with open(counter_file, 'w') as f:
+                    f.write(str(count))
+                
+                return f"P{count:06d}"  # P000001, P000002, etc
+            except Exception:
+                return f"P{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        auto_pid = generate_sequential_patient_id()
+        
+        st.text_input(
+            'Patient ID (Auto-Generated)',
+            value=auto_pid,
+            disabled=True,
+            help="Sequential patient ID"
+        )
+        
+        pid = auto_pid
         age = st.number_input('Age', min_value=0, max_value=120, value=45)
         sex = st.selectbox('Biological Sex', ['M', 'F', 'Other'])
         bmi = st.number_input('BMI', value=24.0, step=0.1, min_value=10.0, max_value=60.0)
