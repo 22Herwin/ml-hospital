@@ -98,7 +98,7 @@ def load_stock():
         df = pd.DataFrame({'medicine_name': common_meds, 'stock': [50]*len(common_meds)})  # Increased stock to 50
         os.makedirs(DATA_DIR, exist_ok=True)
         df.to_csv(STOCK_CSV, index=False)
-        st.info("✅ Medicine stock initialized with default inventory")
+        st.info("Medicine stock initialized with default inventory")
         return df
         
     except Exception as e:
@@ -709,7 +709,7 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                     int(available_hospital['occupied_beds']) + 1
                 save_hospitals(hospitals_df)
 
-                # Save admission to log
+                # Save admission to local CSV
                 os.makedirs(DATA_DIR, exist_ok=True)
                 admission_df = pd.DataFrame([admission_data])
                 if os.path.exists(PATIENTS_LOG):
@@ -717,12 +717,28 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                 else:
                     admission_df.to_csv(PATIENTS_LOG, index=False)
 
+                # SAVE TO SUPABASE (with proper error handling)
+                supabase_success = False
+                try:
+                    from supabase_client import insert_admission
+                    result = insert_admission(admission_data)
+                    if result:
+                        supabase_success = True
+                except ImportError:
+                    st.warning("Supabase client not available (pip install supabase)")
+                except Exception as e:
+                    st.warning(f"Supabase sync error: {type(e).__name__}: {str(e)}")
+
                 # Update stock
                 stock_df.loc[stock_df['medicine_name'] == selected_med, 'stock'] -= qty
                 save_stock(stock_df)
 
+                # Show success messages BEFORE rerun
                 st.success(f"Patient {patient['pid']} admitted to {admission_data['hospital_name']} ({admission_data['ward_type']} Ward)")
-                st.info(f"Admission logged | Medicine assigned: {selected_med} x{qty}")
+                st.info(f"Admission logged locally | Medicine assigned: {selected_med} x{qty}")
+                
+                if supabase_success:
+                    st.success("Admission synced to Supabase")
                 
                 # FIXED: Calculate occupancy_pct AFTER updating hospitals
                 updated_hospitals_df = load_hospitals()
@@ -737,7 +753,9 @@ if st.session_state.current_patient and not st.session_state.admission_complete:
                 
                 st.session_state.last_admission_id = patient['pid']
                 st.session_state.admission_complete = True
-                time.sleep(2)
+                
+                time.sleep(3)  # Give time to read messages
+                
                 # CRITICAL: Clear all caches to force reload
                 load_hospitals.clear()
                 load_stock.clear()
@@ -1001,5 +1019,235 @@ with col3:
         st.info("Simulated +2 admissions per ward")
         safe_rerun()
 
+# View Supabase admissions
 st.markdown("---")
-st.caption(f"AI Hospital Management System • Powered by {CHUTES_MODEL} • ICD-10 Validated • © 2025")
+st.subheader("Supabase Admissions Sync")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button('Fetch from Supabase'):
+        try:
+            from supabase_client import get_all_admissions
+            admissions = get_all_admissions()
+            if admissions:
+                admissions_df = pd.DataFrame(admissions)
+                st.dataframe(admissions_df, width='stretch')
+                st.success(f"Synced {len(admissions)} admissions found in Supabase")
+            else:
+                st.info("No admissions in Supabase yet")
+        except Exception as e:
+            st.error(f"Error fetching from Supabase: {str(e)}")
+
+with col2:
+    if st.button('Sync Local to Supabase'):
+        try:
+            from supabase_client import insert_admission
+            if os.path.exists(PATIENTS_LOG):
+                log_df = pd.read_csv(PATIENTS_LOG)
+                synced_count = 0
+                for _, row in log_df.iterrows():
+                    if insert_admission(row.to_dict()):
+                        synced_count += 1
+                st.success(f"Synced {synced_count}/{len(log_df)} records to Supabase")
+            else:
+                st.info("No local admission log found")
+        except Exception as e:
+            st.error(f"Sync error: {str(e)}")
+
+# View admission timeline
+st.markdown("---")
+st.subheader("Patient Admission Timeline")
+
+try:
+    from supabase_client import get_all_admissions
+    import pandas as pd
+    
+    admissions = get_all_admissions()
+    
+    if admissions:
+        admissions_df = pd.DataFrame(admissions)
+        
+        # Convert admit_time to datetime
+        admissions_df['admit_time'] = pd.to_datetime(admissions_df['admit_time'])
+        admissions_df = admissions_df.sort_values('admit_time')
+        
+        # Create tabs for different timeline views
+        timeline_tab1, timeline_tab2, timeline_tab3 = st.tabs(["Timeline View", "Statistics", "Hospital Breakdown"])
+        
+        with timeline_tab1:
+            st.write("**Admission Timeline (Chronological Order)**")
+            
+            # Create interactive timeline with Plotly
+            fig_timeline = go.Figure()
+            
+            # Color code by ward type
+            ward_colors = {
+                'General': '#1f77b4',
+                'ICU': '#ff7f0e',
+                'Neurological': '#2ca02c',
+                'Outpatient': '#d62728'
+            }
+            
+            for ward_type in admissions_df['ward_type'].unique():
+                ward_data = admissions_df[admissions_df['ward_type'] == ward_type]
+                
+                fig_timeline.add_trace(go.Scatter(
+                    x=ward_data['admit_time'],
+                    y=[ward_type] * len(ward_data),
+                    mode='markers+text',
+                    name=ward_type,
+                    marker=dict(
+                        size=12,
+                        color=ward_colors.get(ward_type, '#000000'),
+                        opacity=0.7
+                    ),
+                    text=[f"<b>{row['patient_id']}</b><br>{row['diagnosis_code']}<br>{row['med_used']}" 
+                          for _, row in ward_data.iterrows()],
+                    textposition='top center',
+                    hovertemplate='<b>%{text}</b><br>Time: %{x}<br>Ward: %{y}<extra></extra>',
+                    customdata=ward_data['patient_id']
+                ))
+            
+            fig_timeline.update_layout(
+                title="Patient Admissions Timeline by Ward Type",
+                xaxis_title="Admission Time",
+                yaxis_title="Ward Type",
+                height=500,
+                hovermode='closest',
+                template='plotly_dark'
+            )
+            
+            st.plotly_chart(fig_timeline, use_container_width=True)
+            
+            # Detailed timeline list
+            st.write("**Detailed Admission Log**")
+            
+            for idx, row in admissions_df.iterrows():
+                with st.expander(f"🏥 {row['patient_id']} - {row['admit_time'].strftime('%Y-%m-%d %H:%M')} ({row['ward_type']})"):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write(f"**Patient ID:** {row['patient_id']}")
+                        st.write(f"**Admit Time:** {row['admit_time'].strftime('%Y-%m-%d %H:%M:%S')}")
+                        st.write(f"**Hospital:** {row.get('hospital_name', 'N/A')}")
+                    
+                    with col2:
+                        st.write(f"**Ward:** {row['ward_type']}")
+                        st.write(f"**Diagnosis:** {row['diagnosis_code']} - {row.get('diagnosis_name', 'Unknown')}")
+                        st.write(f"**Estimated Stay:** {row['estimated_days']} days")
+                    
+                    with col3:
+                        st.write(f"**Medication:** {row['med_used']}")
+                        st.write(f"**Quantity:** {row['qty']} unit(s)")
+                        st.write(f"**Severity:** {row['severity_score']}/25")
+        
+        with timeline_tab2:
+            st.write("**Admission Statistics**")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Admissions", len(admissions_df))
+            
+            with col2:
+                avg_severity = admissions_df['severity_score'].mean()
+                st.metric("Avg Severity Score", f"{avg_severity:.1f}/25")
+            
+            with col3:
+                avg_stay = admissions_df['estimated_days'].mean()
+                st.metric("Avg Stay (days)", f"{avg_stay:.1f}")
+            
+            with col4:
+                inpatient_count = len(admissions_df[admissions_df['estimated_days'] > 0])
+                st.metric("Inpatient Admits", inpatient_count)
+            
+            # Admissions per hour
+            st.write("**Admissions by Hour**")
+            admissions_df['admit_time'] = pd.to_datetime(admissions_df['admit_time'], errors='coerce')
+            admissions_df['hour'] = admissions_df['admit_time'].dt.floor('h')
+            admissions_per_hour = admissions_df.groupby('hour').size()
+            
+            fig_hourly = px.bar(
+                x=admissions_per_hour.index,
+                y=admissions_per_hour.values,
+                title="Admissions per Hour",
+                labels={'x': 'Time', 'y': 'Number of Admissions'},
+                height=400
+            )
+            st.plotly_chart(fig_hourly, use_container_width=True)
+            
+            # Diagnosis distribution
+            st.write("**Diagnosis Distribution**")
+            diagnosis_count = admissions_df['diagnosis_code'].value_counts()
+            
+            fig_diagnosis = px.pie(
+                values=diagnosis_count.values,
+                names=diagnosis_count.index,
+                title="Patient Admissions by Diagnosis Code",
+                height=400
+            )
+            st.plotly_chart(fig_diagnosis, use_container_width=True)
+            
+            # Ward distribution
+            st.write("**Ward Distribution**")
+            ward_count = admissions_df['ward_type'].value_counts()
+            
+            fig_ward = px.bar(
+                x=ward_count.index,
+                y=ward_count.values,
+                title="Admissions by Ward Type",
+                labels={'x': 'Ward Type', 'y': 'Number of Admissions'},
+                color=ward_count.index,
+                height=400
+            )
+            st.plotly_chart(fig_ward, use_container_width=True)
+        
+        with timeline_tab3:
+            st.write("**Hospital Admission Breakdown**")
+            
+            hospital_stats = admissions_df.groupby('hospital_name').agg({
+                'patient_id': 'count',
+                'severity_score': 'mean',
+                'estimated_days': 'mean',
+                'med_used': lambda x: x.nunique()
+            }).round(2)
+            
+            hospital_stats.columns = ['Total Admits', 'Avg Severity', 'Avg Stay (days)', 'Unique Medications']
+            
+            st.dataframe(hospital_stats, width='stretch')
+            
+            # Hospital timeline
+            st.write("**Admissions per Hospital (Timeline)**")
+            hospital_admissions = admissions_df.groupby(['hospital_name', 'admit_time']).size().reset_index(name='count')
+            
+            fig_hospital_timeline = px.line(
+                hospital_admissions,
+                x='admit_time',
+                y='count',
+                color='hospital_name',
+                title="Cumulative Admissions per Hospital",
+                labels={'admit_time': 'Time', 'count': 'Cumulative Admissions'},
+                height=400,
+                markers=True
+            )
+            
+            st.plotly_chart(fig_hospital_timeline, use_container_width=True)
+            
+            # Ward type vs Hospital heatmap
+            st.write("**Hospital-Ward Cross-Tabulation**")
+            hospital_ward = pd.crosstab(
+                admissions_df['hospital_name'],
+                admissions_df['ward_type'],
+                margins=True
+            )
+            
+            st.dataframe(hospital_ward, width='stretch')
+    
+    else:
+        st.info("📊 No admission data in Supabase yet. Admissions will appear here as they are recorded.")
+
+except ImportError:
+    st.error("Supabase client not configured. Timeline feature unavailable.")
+except Exception as e:
+    st.error(f"Error loading timeline: {str(e)}")
