@@ -245,7 +245,7 @@ PATIENT CLINICAL PRESENTATION:
 
 Demographics:
 - Age: {features['age']} years
-- Sex: {features.get('sex', 'Not specified')}
+- Sex: {'Unknown' if features.get('sex') not in ['M', 'F'] else features['sex']}
 - BMI: {features['bmi']:.1f}
 
 Vital Signs:
@@ -1067,184 +1067,301 @@ try:
         
         # Convert admit_time to datetime
         admissions_df['admit_time'] = pd.to_datetime(admissions_df['admit_time'])
-        admissions_df = admissions_df.sort_values('admit_time')
+        admissions_df = admissions_df.sort_values('admit_time', ascending=False)  # Most recent first
+        
+        # Extract date components for filtering
+        admissions_df['date'] = admissions_df['admit_time'].dt.date
+        admissions_df['month'] = admissions_df['admit_time'].dt.to_period('M')
+        admissions_df['year'] = admissions_df['admit_time'].dt.year
         
         # Create tabs for different timeline views
-        timeline_tab1, timeline_tab2, timeline_tab3 = st.tabs(["Timeline View", "Statistics", "Hospital Breakdown"])
+        timeline_tab1, timeline_tab2, timeline_tab3 = st.tabs(["Recent Admissions", "Analytics", "Hospital Breakdown"])
         
         with timeline_tab1:
-            st.write("**Admission Timeline (Chronological Order)**")
+            # FILTERS SECTION
+            st.write("**Filter Options**")
+            col_filter1, col_filter2, col_filter3 = st.columns(3)
             
-            # Create interactive timeline with Plotly
-            fig_timeline = go.Figure()
+            with col_filter1:
+                filter_type = st.radio(
+                    "Filter by:",
+                    ["All", "Date Range", "Specific Month", "Specific Date"],
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
             
-            # Color code by ward type
-            ward_colors = {
-                'General': '#1f77b4',
-                'ICU': '#ff7f0e',
-                'Neurological': '#2ca02c',
-                'Outpatient': '#d62728'
-            }
+            filtered_df = admissions_df.copy()
             
-            for ward_type in admissions_df['ward_type'].unique():
-                ward_data = admissions_df[admissions_df['ward_type'] == ward_type]
+            with col_filter2:
+                if filter_type == "Date Range":
+                    date_range = st.date_input(
+                        "Select date range",
+                        value=(admissions_df['date'].min(), admissions_df['date'].max()),
+                        min_value=admissions_df['date'].min(),
+                        max_value=admissions_df['date'].max(),
+                        key="date_range"
+                    )
+                    if isinstance(date_range, tuple) and len(date_range) == 2:
+                        start_date, end_date = date_range
+                        filtered_df = filtered_df[(filtered_df['date'] >= start_date) & (filtered_df['date'] <= end_date)]
+                    elif isinstance(date_range, tuple):
+                        st.warning("Please select both start and end date")
                 
-                fig_timeline.add_trace(go.Scatter(
-                    x=ward_data['admit_time'],
-                    y=[ward_type] * len(ward_data),
-                    mode='markers+text',
-                    name=ward_type,
-                    marker=dict(
-                        size=12,
-                        color=ward_colors.get(ward_type, '#000000'),
-                        opacity=0.7
-                    ),
-                    text=[f"<b>{row['patient_id']}</b><br>{row['diagnosis_code']}<br>{row['med_used']}" 
-                          for _, row in ward_data.iterrows()],
-                    textposition='top center',
-                    hovertemplate='<b>%{text}</b><br>Time: %{x}<br>Ward: %{y}<extra></extra>',
-                    customdata=ward_data['patient_id']
-                ))
+                elif filter_type == "Specific Month":
+                    available_months = sorted(admissions_df['month'].unique(), reverse=True)
+                    selected_month = st.selectbox(
+                        "Select month",
+                        available_months,
+                        format_func=lambda x: str(x),
+                        key="month_filter"
+                    )
+                    filtered_df = filtered_df[filtered_df['month'] == selected_month]
+                
+                elif filter_type == "Specific Date":
+                    available_dates = sorted(admissions_df['date'].unique(), reverse=True)
+                    selected_date = st.selectbox(
+                        "Select date",
+                        available_dates,
+                        format_func=lambda x: x.strftime('%Y-%m-%d'),
+                        key="date_filter"
+                    )
+                    filtered_df = filtered_df[filtered_df['date'] == selected_date]
             
-            fig_timeline.update_layout(
-                title="Patient Admissions Timeline by Ward Type",
-                xaxis_title="Admission Time",
-                yaxis_title="Ward Type",
-                height=500,
-                hovermode='closest',
-                template='plotly_dark'
-            )
+            with col_filter3:
+                filter_ward = st.multiselect(
+                    "Filter by Ward Type",
+                    admissions_df['ward_type'].unique().tolist(),
+                    default=admissions_df['ward_type'].unique().tolist(),
+                    key="ward_filter"
+                )
+                if filter_ward:
+                    filtered_df = filtered_df[filtered_df['ward_type'].isin(filter_ward)]
             
-            st.plotly_chart(fig_timeline, use_container_width=True)
+            st.divider()
             
-            # Detailed timeline list
-            st.write("**Detailed Admission Log**")
+            # Display filtered results summary
+            st.write(f"**Showing {len(filtered_df)} admission(s)** out of {len(admissions_df)} total")
             
-            for idx, row in admissions_df.iterrows():
-                with st.expander(f"{row['patient_id']} - {row['admit_time'].strftime('%Y-%m-%d %H:%M')} ({row['ward_type']})"):
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.write(f"**Patient ID:** {row['patient_id']}")
-                        st.write(f"**Admit Time:** {row['admit_time'].strftime('%Y-%m-%d %H:%M:%S')}")
-                        st.write(f"**Hospital:** {row.get('hospital_name', 'N/A')}")
-                    
-                    with col2:
-                        st.write(f"**Ward:** {row['ward_type']}")
-                        st.write(f"**Diagnosis:** {row['diagnosis_code']} - {row.get('diagnosis_name', 'Unknown')}")
+            if len(filtered_df) > 0:
+                # Simple table view of filtered admissions
+                st.write("**Recent Patient Admissions**")
+                
+                recent_admissions = filtered_df.head(10).copy()
+                recent_admissions['admit_time'] = recent_admissions['admit_time'].dt.strftime('%Y-%m-%d %H:%M')
+                
+                # Create display dataframe - FIXED: Use [] not {}
+                display_df = recent_admissions[[
+                    'patient_id', 'admit_time', 'hospital_name', 'ward_type', 
+                    'diagnosis_code', 'med_used', 'severity_score'
+                ]].copy()
+                
+                display_df.columns = ['Patient ID', 'Admit Time', 'Hospital', 'Ward', 'Diagnosis', 'Medication', 'Severity']
+                
+                st.dataframe(display_df, width='stretch', hide_index=True)
+                
+                # Expandable detailed view
+                st.write("**Detailed View (Click to Expand)**")
+                
+                for idx, row in filtered_df.iterrows():                    
+                    with st.expander(f"{row['patient_id']} | {row['admit_time'].strftime('%m-%d %H:%M')} | {row['severity_score']}/25"):
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.write(f"**Patient ID:**\n{row['patient_id']}")
+                            st.write(f"**Admission Time:**\n{row['admit_time'].strftime('%Y-%m-%d %H:%M:%S')}")
+                        
+                        with col2:
+                            st.write(f"**Hospital:**\n{row['hospital_name']}")
+                            st.write(f"**Ward Type:**\n{row['ward_type']}")
+                        
+                        with col3:
+                            st.write(f"**Diagnosis Code:**\n{row['diagnosis_code']}")
+                            st.write(f"**Diagnosis Name:**\n{row.get('diagnosis_name', 'Unknown')}")
+                        
+                        st.divider()
+                        
+                        col4, col5, col6 = st.columns(3)
+                        
+                        with col4:
+                            st.write(f"**Medication:**\n{row['med_used']}")
+                        
+                        with col5:
+                            st.write(f"**Quantity:**\n{row['qty']} unit(s)")
+                        
+                        with col6:
+                            st.write(f"**Severity Score:**\n{row['severity_score']}/25")
+                        
                         st.write(f"**Estimated Stay:** {row['estimated_days']} days")
-                    
-                    with col3:
-                        st.write(f"**Medication:** {row['med_used']}")
-                        st.write(f"**Quantity:** {row['qty']} unit(s)")
-                        st.write(f"**Severity:** {row['severity_score']}/25")
+            else:
+                st.info("No admissions found for the selected filter(s)")
         
         with timeline_tab2:
-            st.write("**Admission Statistics**")
+            # Apply same filters to analytics
+            col_filter_a1, col_filter_a2 = st.columns(2)
+            
+            with col_filter_a1:
+                filter_type_analytics = st.radio(
+                    "Analytics Filter:",
+                    ["All Time", "Date Range", "Specific Month"],
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    key="analytics_filter"
+                )
+            
+            analytics_df = admissions_df.copy()
+            
+            with col_filter_a2:
+                if filter_type_analytics == "Date Range":
+                    date_range_analytics = st.date_input(
+                        "Select date range for analytics",
+                        value=(admissions_df['date'].min(), admissions_df['date'].max()),
+                        min_value=admissions_df['date'].min(),
+                        max_value=admissions_df['date'].max(),
+                        key="date_range_analytics"
+                    )
+                    if isinstance(date_range_analytics, tuple) and len(date_range_analytics) == 2:
+                        start_date_a, end_date_a = date_range_analytics
+                        analytics_df = analytics_df[(analytics_df['date'] >= start_date_a) & (analytics_df['date'] <= end_date_a)]
+                
+                elif filter_type_analytics == "Specific Month":
+                    available_months_a = sorted(admissions_df['month'].unique(), reverse=True)
+                    selected_month_a = st.selectbox(
+                        "Select month for analytics",
+                        available_months_a,
+                        format_func=lambda x: str(x),
+                        key="month_filter_analytics"
+                    )
+                    analytics_df = analytics_df[analytics_df['month'] == selected_month_a]
+            
+            st.divider()
+            
+            st.write("**Key Metrics**")
             
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("Total Admissions", len(admissions_df))
+                st.metric("Total Admissions", len(analytics_df), delta="records")
             
             with col2:
-                avg_severity = admissions_df['severity_score'].mean()
-                st.metric("Avg Severity Score", f"{avg_severity:.1f}/25")
+                avg_severity = analytics_df['severity_score'].mean() if len(analytics_df) > 0 else 0
+                severity_label = "Critical" if avg_severity >= 15 else "High" if avg_severity >= 10 else "Moderate" if avg_severity >= 5 else "Low"
+                st.metric("Avg Severity", f"{avg_severity:.1f}/25", delta=severity_label)
             
             with col3:
-                avg_stay = admissions_df['estimated_days'].mean()
-                st.metric("Avg Stay (days)", f"{avg_stay:.1f}")
+                avg_stay = analytics_df['estimated_days'].mean() if len(analytics_df) > 0 else 0
+                st.metric("Avg Stay (days)", f"{avg_stay:.1f}", delta="inpatient only")
             
             with col4:
-                inpatient_count = len(admissions_df[admissions_df['estimated_days'] > 0])
-                st.metric("Inpatient Admits", inpatient_count)
+                inpatient_count = len(analytics_df[analytics_df['estimated_days'] > 0])
+                inpatient_pct = int((inpatient_count / len(analytics_df) * 100)) if len(analytics_df) > 0 else 0
+                st.metric("Inpatient Rate", f"{inpatient_pct}%", delta=f"{inpatient_count} patients")
             
-            # Admissions per hour
-            st.write("**Admissions by Hour**")
-            admissions_df['admit_time'] = pd.to_datetime(admissions_df['admit_time'], errors='coerce')
-            admissions_df['hour'] = admissions_df['admit_time'].dt.floor('H')
-            admissions_per_hour = admissions_df.groupby('hour').size()
+            st.divider()
             
-            fig_hourly = px.bar(
-                x=admissions_per_hour.index,
-                y=admissions_per_hour.values,
-                title="Admissions per Hour",
-                labels={'x': 'Time', 'y': 'Number of Admissions'},
-                height=400
-            )
-            st.plotly_chart(fig_hourly, use_container_width=True)
-            
-            # Diagnosis distribution
-            st.write("**Diagnosis Distribution**")
-            diagnosis_count = admissions_df['diagnosis_code'].value_counts()
-            
-            fig_diagnosis = px.pie(
-                values=diagnosis_count.values,
-                names=diagnosis_count.index,
-                title="Patient Admissions by Diagnosis Code",
-                height=400
-            )
-            st.plotly_chart(fig_diagnosis, use_container_width=True)
-            
-            # Ward distribution
-            st.write("**Ward Distribution**")
-            ward_count = admissions_df['ward_type'].value_counts()
-            
-            fig_ward = px.bar(
-                x=ward_count.index,
-                y=ward_count.values,
-                title="Admissions by Ward Type",
-                labels={'x': 'Ward Type', 'y': 'Number of Admissions'},
-                color=ward_count.index,
-                height=400
-            )
-            st.plotly_chart(fig_ward, use_container_width=True)
+            if len(analytics_df) > 0:
+                # Ward distribution
+                st.write("**Distribution by Ward Type**")
+                ward_count = analytics_df['ward_type'].value_counts()
+                
+                fig_ward = px.bar(
+                    x=ward_count.index,
+                    y=ward_count.values,
+                    title="Number of Admissions by Ward Type",
+                    labels={'x': 'Ward Type', 'y': 'Number of Admissions'},
+                    color=ward_count.index,
+                    height=350,
+                    color_discrete_map={
+                        'General': '#1f77b4',
+                        'ICU': '#ff7f0e',
+                        'Neurological': '#2ca02c',
+                        'Outpatient': '#d62728'
+                    }
+                )
+                fig_ward.update_layout(showlegend=False)
+                st.plotly_chart(fig_ward, use_container_width=True)
+                
+                # Top diagnoses
+                st.write("**Top Diagnoses**")
+                diagnosis_count = analytics_df['diagnosis_code'].value_counts().head(8)
+                
+                fig_diagnosis = px.bar(
+                    x=diagnosis_count.values,
+                    y=diagnosis_count.index,
+                    orientation='h',
+                    title="Most Common Diagnoses",
+                    labels={'x': 'Count', 'y': 'Diagnosis Code'},
+                    height=350
+                )
+                st.plotly_chart(fig_diagnosis, use_container_width=True)
+                
+                # Severity distribution
+                st.write("**Severity Score Distribution**")
+                severity_bins = pd.cut(analytics_df['severity_score'], bins=[0, 5, 10, 15, 25], labels=['Low (0-5)', 'Moderate (5-10)', 'High (10-15)', 'Critical (15+)'])
+                severity_count = severity_bins.value_counts().sort_index()
+                
+                fig_severity = px.pie(
+                    values=severity_count.values,
+                    names=severity_count.index,
+                    title="Patient Risk Distribution",
+                    height=350,
+                    color_discrete_sequence=['#2ca02c', '#ffd700', '#ff7f0e', '#d62728']
+                )
+                st.plotly_chart(fig_severity, use_container_width=True)
+            else:
+                st.info("No data available for the selected filter")
         
         with timeline_tab3:
-            st.write("**Hospital Admission Breakdown**")
+            # Hospital filter
+            col_hosp1, col_hosp2 = st.columns(2)
             
-            hospital_stats = admissions_df.groupby('hospital_name').agg({
+            with col_hosp1:
+                hospital_filter = st.multiselect(
+                    "Filter by Hospital",
+                    admissions_df['hospital_name'].unique().tolist(),
+                    default=admissions_df['hospital_name'].unique().tolist(),
+                    key="hospital_filter"
+                )
+            
+            hospital_df = admissions_df[admissions_df['hospital_name'].isin(hospital_filter)]
+            
+            st.write("**Hospital Statistics**")
+            
+            hospital_stats = hospital_df.groupby('hospital_name').agg({
                 'patient_id': 'count',
                 'severity_score': 'mean',
-                'estimated_days': 'mean',
-                'med_used': lambda x: x.nunique()
+                'estimated_days': 'mean'
             }).round(2)
             
-            hospital_stats.columns = ['Total Admits', 'Avg Severity', 'Avg Stay (days)', 'Unique Medications']
+            hospital_stats.columns = ['Total Admits', 'Avg Severity', 'Avg Stay (days)']
+            hospital_stats = hospital_stats.sort_values('Total Admits', ascending=False)
             
             st.dataframe(hospital_stats, width='stretch')
             
-            # Hospital timeline
-            st.write("**Admissions per Hospital (Timeline)**")
-            hospital_admissions = admissions_df.groupby(['hospital_name', 'admit_time']).size().reset_index(name='count')
+            st.divider()
             
-            fig_hospital_timeline = px.line(
-                hospital_admissions,
-                x='admit_time',
-                y='count',
-                color='hospital_name',
-                title="Cumulative Admissions per Hospital",
-                labels={'admit_time': 'Time', 'count': 'Cumulative Admissions'},
-                height=400,
-                markers=True
-            )
-            
-            st.plotly_chart(fig_hospital_timeline, use_container_width=True)
-            
-            # Ward type vs Hospital heatmap
-            st.write("**Hospital-Ward Cross-Tabulation**")
-            hospital_ward = pd.crosstab(
-                admissions_df['hospital_name'],
-                admissions_df['ward_type'],
-                margins=True
-            )
-            
-            st.dataframe(hospital_ward, width='stretch')
+            if len(hospital_df) > 0:
+                # Hospital vs Ward cross-tabulation
+                st.write("**Admissions by Hospital & Ward**")
+                hospital_ward = pd.crosstab(
+                    hospital_df['hospital_name'],
+                    hospital_df['ward_type']
+                )
+                
+                fig_heatmap = px.imshow(
+                    hospital_ward,
+                    labels=dict(x='Ward Type', y='Hospital', color='Admissions'),
+                    title="Hospital-Ward Admission Heatmap",
+                    height=400,
+                    color_continuous_scale='YlOrRd'
+                )
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+                
+                st.dataframe(hospital_ward, width='stretch')
     
     else:
-        st.info("No admission data in Supabase yet. Admissions will appear here as they are recorded.")
+        st.info("📭 No admission data yet. Admissions will appear here as patients are admitted.")
 
 except ImportError:
-    st.error("Supabase client not configured. Timeline feature unavailable.")
+    st.warning("⚠️ Supabase client not configured. Timeline feature unavailable.")
 except Exception as e:
-    st.error(f"Error loading timeline: {str(e)}")
+    st.error(f"❌ Error loading timeline: {str(e)}")
