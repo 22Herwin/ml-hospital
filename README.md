@@ -96,11 +96,11 @@ The application is now organized into clean, maintainable modules:
 project/
 ├── app.py                      # Main Streamlit app (orchestrator)
 ├── app_backup_old.py           # Backup of original monolithic app
-├── modules/                    # Modular components (NEW!)
+├── modules/                    # Modular components
 │   ├── __init__.py
 │   ├── config.py               # Configuration & constants
 │   ├── data_manager.py         # Stock & hospital CRUD operations
-│   ├── clinical_analysis.py   # AI diagnosis & severity scoring
+│   ├── clinical_analysis.py    # AI diagnosis & severity scoring
 │   ├── ui_components.py        # Sidebar, forms, display functions
 │   ├── visualizations.py       # Plotly charts & dashboards
 │   └── admission.py            # Admission workflow & timeline
@@ -220,7 +220,7 @@ Open your browser: **http://localhost:8501**
 
 1. **Open DataGrip**
 2. **File → New → Data Source → SQLite**
-3. **File path:** `c:\Users\roy bagus k\Documents\rawat_inap_project\admissions.db`
+3. **File path:** `yourp-path\admissions.db`
 4. **Test Connection** → Click **OK**
 5. Right-click database → **Open SQL** to query admissions
 

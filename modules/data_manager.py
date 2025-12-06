@@ -157,11 +157,35 @@ def check_ward_capacity_and_alert(requested_ward: str, hospitals_df: pd.DataFram
 
 
 def generate_sequential_patient_id() -> str:
-    """Generate sequential patient ID"""
+    """Generate sequential patient ID by checking database for highest existing ID"""
     import datetime
-    counter_file = os.path.join(DATA_DIR, '.patient_counter')
+    import re
     
     try:
+        # Try to get the highest patient ID from database
+        try:
+            from sqlite_client import get_all_admissions
+            admissions = get_all_admissions()
+            
+            if admissions:
+                # Extract numeric parts from all patient IDs
+                max_num = 0
+                for admission in admissions:
+                    pid = admission.get('patient_id', '')
+                    match = re.match(r'P(\d+)', pid)
+                    if match:
+                        num = int(match.group(1))
+                        max_num = max(max_num, num)
+                
+                # Next ID is max + 1
+                next_id = max_num + 1
+                return f"P{next_id:06d}"
+        except Exception:
+            pass
+        
+        # Fallback to counter file
+        counter_file = os.path.join(DATA_DIR, '.patient_counter')
+        
         if os.path.exists(counter_file):
             with open(counter_file, 'r') as f:
                 count = int(f.read().strip())
@@ -174,4 +198,5 @@ def generate_sequential_patient_id() -> str:
         
         return f"P{count:06d}"
     except Exception:
+        # Final fallback: timestamp-based
         return f"P{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
