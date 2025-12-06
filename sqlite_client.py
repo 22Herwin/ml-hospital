@@ -21,9 +21,12 @@ def get_db():
 
 
 def ensure_tables():
-    """Create admissions table if it doesn't exist."""
+    """Create admissions table if it doesn't exist, and migrate schema if needed."""
     conn = get_db()
-    conn.execute("""
+    cursor = conn.cursor()
+    
+    # Create table if not exists
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS admissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             patient_id TEXT,
@@ -44,6 +47,32 @@ def ensure_tables():
             hospital_id TEXT
         );
     """)
+    
+    # Migrate existing table by adding missing columns
+    try:
+        # Check existing columns
+        cursor.execute("PRAGMA table_info(admissions)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        
+        # Add missing columns if needed
+        required_columns = {
+            'planned_admission_date': 'TEXT',
+            'planned_admission_time': 'TEXT',
+            'estimated_discharge_date': 'TEXT',
+            'length_of_stay_days': 'INTEGER',
+            'diagnosis_name': 'TEXT',
+            'hospital_name': 'TEXT',
+            'hospital_id': 'TEXT'
+        }
+        
+        for col_name, col_type in required_columns.items():
+            if col_name not in existing_columns:
+                cursor.execute(f"ALTER TABLE admissions ADD COLUMN {col_name} {col_type}")
+                print(f"✅ Added missing column: {col_name}")
+        
+    except Exception as e:
+        print(f"Schema migration note: {str(e)}")
+    
     conn.commit()
     conn.close()
 

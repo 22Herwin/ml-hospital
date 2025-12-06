@@ -1,53 +1,105 @@
-# Python caches
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 *.pkl
 *.pickle
 
-# Virtual environment
+# Virtual environments
 venv/
 env/
 .venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
 
-# Streamlit cache
-.streamlit/
-
-# VSCode settings
+# IDEs
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
-# Environment variables
+# Environment variables (IMPORTANT - contains API keys)
 .env
 .env.local
 .env.*.local
+*.env
+
+# Streamlit
+.streamlit/
+.streamlit/secrets.toml
 
 # Logs
 *.log
+logs/
+data/chutes_raw_responses.log
 
-# Models (optional—if you want them NOT tracked)
-models/*.pkl
+# Database files (SQLite - contains patient data)
+*.db
+*.sqlite
+*.sqlite3
+admissions.db
+hospital.db
 
-# Datasets (optional—avoid uploading big data)
+# Data files (CSV contains sensitive patient info)
 data/*.csv
 data/*.xlsx
 data/admission_log.csv
 data/medicine_stock.csv
 data/hospitals.csv
-data/chutes_raw_responses.log
+data/.patient_counter
 
-# Jupyter Notebook checkpoints
+# Backup files
+*_backup.py
+*_backup_old.py
+*.bak
+*.backup
+
+# Developer documentation
+ARCHITECTURE.md
+MIGRATION_GUIDE.md
+REFACTORING_SUMMARY.md
+
+# Jupyter Notebook
 .ipynb_checkpoints/
+*.ipynb
 
-# macOS junk
-*.DS_Store
+# Machine learning models
+models/
+*.h5
+*.hdf5
+*.model
+*.weights
 
-# Supabase credentials
-supabase_schema.sql
-
-# Playwright test outputs (if any)
+# Test outputs
 test-results/
 playwright-report/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# OS specific
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+~*
 
 # Build folders
 build/

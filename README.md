@@ -13,6 +13,29 @@ A fully interactive **clinical decision support system** using:
 
 ---
 
+## Architecture
+
+**Version 2.0** - Completely refactored to modular architecture!
+
+The application is now organized into clean, maintainable modules:
+
+- **`app.py`** (260 lines) - Main orchestrator, imports and coordinates all modules
+- **`modules/config.py`** - All configuration, constants, and environment variables
+- **`modules/data_manager.py`** - Stock & hospital data operations (CRUD)
+- **`modules/clinical_analysis.py`** - AI diagnosis, severity scoring, fallback rules
+- **`modules/ui_components.py`** - Streamlit UI components (sidebar, forms, display)
+- **`modules/visualizations.py`** - All Plotly charts and dashboards
+- **`modules/admission.py`** - Complete admission workflow & timeline
+
+**Benefits:**
+
+- ✅ Clean separation of concerns
+- ✅ Easy to maintain and test
+- ✅ Reusable components
+- ✅ Original 1400+ line monolith → organized modular structure
+
+---
+
 ## Features
 
 ### **AI-Powered Diagnosis**
@@ -71,16 +94,25 @@ A fully interactive **clinical decision support system** using:
 
 ```
 project/
-├── app.py                 # Streamlit app (UI, workflows, charts)
-├── ai_engine.py           # LLM calls (Chutes + Ollama fallback)
-├── icd10_loader.py        # WHO + ICD10API ICD-10 validation
-├── sqlite_client.py       # SQLite database operations (CRUD)
-├── supabase_client.py     # Optional Supabase backup sync
-├── admissions.db          # SQLite local database (auto-created)
+├── app.py                      # Main Streamlit app (orchestrator)
+├── app_backup_old.py           # Backup of original monolithic app
+├── modules/                    # Modular components (NEW!)
+│   ├── __init__.py
+│   ├── config.py               # Configuration & constants
+│   ├── data_manager.py         # Stock & hospital CRUD operations
+│   ├── clinical_analysis.py   # AI diagnosis & severity scoring
+│   ├── ui_components.py        # Sidebar, forms, display functions
+│   ├── visualizations.py       # Plotly charts & dashboards
+│   └── admission.py            # Admission workflow & timeline
+├── ai_engine.py                # LLM calls (Chutes + Ollama fallback)
+├── icd10_loader.py             # WHO + ICD10API ICD-10 validation
+├── sqlite_client.py            # SQLite database operations (CRUD)
+├── supabase_client.py          # Optional Supabase backup sync
+├── admissions.db               # SQLite local database (auto-created)
 ├── data/
 │   ├── hospitals.csv
 │   ├── medicine_stock.csv
-│   └── admission_log.csv
+│   └── .patient_counter        # Sequential patient ID counter
 ├── .env
 ├── requirements.txt
 └── README.md
